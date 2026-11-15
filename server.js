@@ -40,6 +40,19 @@ async function readJson(req) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new HttpError(400, 'JSON inválido'); }
 }
 
+async function readImage(req) {
+  if (!/^image\//.test(req.headers['content-type'] || '')) throw new HttpError(415, 'Envie um arquivo de imagem');
+  const chunks = [];
+  let size = 0;
+  for await (const c of req) {
+    size += c.length;
+    if (size > 25_000_000) throw new HttpError(413, 'Imagem muito grande (máximo 25 MB)');
+    chunks.push(c);
+  }
+  if (!size) throw new HttpError(400, 'Imagem vazia');
+  return Buffer.concat(chunks);
+}
+
 function isAdmin(req) {
   if (!cfg.ADMIN_TOKEN) return false;
   const got = Buffer.from(String(req.headers['x-admin-token'] || ''));
@@ -144,6 +157,16 @@ route('DELETE', '/api/books/:id', (req, q, { id }) => {
 route('POST', '/api/books/:id/cover', async (req, q, { id }) => {
   requireAdmin(req);
   return publicBook(await gen.generateCover(id, await readJson(req)));
+});
+
+route('PUT', '/api/books/:id/cover/upload', async (req, q, { id }) => {
+  requireAdmin(req);
+  return publicBook(await gen.uploadImage(id, 'cover', await readImage(req)));
+});
+
+route('PUT', '/api/books/:id/pages/:pageId/upload', async (req, q, { id, pageId }) => {
+  requireAdmin(req);
+  return publicBook(await gen.uploadImage(id, pageId, await readImage(req)));
 });
 
 route('POST', '/api/books/:id/pages/:pageId/image', async (req, q, { id, pageId }) => {

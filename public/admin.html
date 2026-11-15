@@ -38,6 +38,9 @@
     .chips span { background: #f0ebe3; padding: 2px 8px; border-radius: 99px; }
     .dica { font-size: 12px; color: #8a8378; margin-top: 4px; }
     @media (max-width: 700px) { .pagina, .capa-ed { grid-template-columns: 1fr; } }
+    .pagina.sel, .card.sel { box-shadow: inset 4px 0 0 var(--green); }
+    .pagina.sel { background: #f6fbf5; }
+    .thumb.alvo { outline: 3px dashed var(--green); outline-offset: 3px; }
     #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #222; color: #fff; padding: 10px 16px; border-radius: 10px; display: none; z-index: 20; max-width: 90vw; }
   </style>
 </head>
@@ -45,6 +48,7 @@
 <header><h1>✏️ Editor de livros</h1><a href="/">Ver estante</a></header>
 <main id="app"></main>
 <div id="toast"></div>
+<input type="file" id="arquivo" accept="image/*" hidden>
 
 <script>
 const $ = (s, el = document) => el.querySelector(s);
@@ -61,7 +65,7 @@ async function api(path, opts = {}) {
   const r = await fetch(path, {
     ...opts,
     headers: { 'Content-Type': 'application/json', 'x-admin-token': token, ...(opts.headers || {}) },
-    body: opts.body && typeof opts.body !== 'string' ? JSON.stringify(opts.body) : opts.body,
+    body: opts.body && typeof opts.body !== 'string' && !(opts.body instanceof Blob) ? JSON.stringify(opts.body) : opts.body,
   });
   const data = await r.json().catch(() => ({}));
   if (r.status === 401) { localStorage.removeItem('adminToken'); token = ''; telaLogin(); }
@@ -74,6 +78,90 @@ async function ocupado(btn, fn) {
   const txt = btn.textContent; btn.disabled = true; btn.textContent = 'gerando…';
   try { return await fn(); } catch (e) { toast(e.message, 7000); } finally { btn.disabled = false; btn.textContent = txt; }
 }
+
+// envia uma imagem do computador/celular para a capa ('cover') ou para uma página (id)
+async function enviarImagem(alvo, file, btn) {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) return toast('Escolha um arquivo de imagem');
+  if (file.size > 25e6) return toast('Imagem muito grande (máximo 25 MB)');
+  const thumb = $(`[data-drop="${CSS.escape(alvo)}"]`);
+  if (thumb) thumb.style.opacity = '.4';
+  const run = async () => {
+    await salvar(true);
+    const url = alvo === 'cover' ? `/api/books/${livro.id}/cover/upload` : `/api/books/${livro.id}/pages/${alvo}/upload`;
+    livro = await api(url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+    if (alvo === 'cover') return telaLivro(livro.id);
+    const i = livro.pages.findIndex((p) => p.id === alvo);
+    $(`.pagina[data-id="${CSS.escape(alvo)}"]`).outerHTML = paginaHtml(livro.pages[i], i);
+    if (alvoColar === alvo) marcarAlvo(alvo);
+    toast('Imagem enviada ✔');
+  };
+  try { await (btn ? ocupado(btn, run) : run()); } catch (e) { toast(e.message, 7000); }
+  finally { if (thumb?.isConnected) thumb.style.opacity = ''; }
+}
+
+function escolherArquivo(alvo, btn) {
+  const inp = $('#arquivo');
+  inp.value = '';
+  inp.onchange = () => enviarImagem(alvo, inp.files[0], btn);
+  inp.click();
+}
+
+// ---- colar imagem (Ctrl+V) ----
+// O destino é a última página (ou a capa) em que você clicou.
+let alvoColar = null;
+function marcarAlvo(alvo) {
+  alvoColar = alvo;
+  document.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel'));
+  const el = alvo === 'cover' ? $('#cardCapa') : $(`.pagina[data-id="${CSS.escape(alvo)}"]`);
+  el?.classList.add('sel');
+}
+addEventListener('pointerdown', (e) => {
+  if (!livro) return;
+  const pg = e.target.closest?.('.pagina');
+  if (pg) return marcarAlvo(pg.dataset.id);
+  if (e.target.closest?.('#cardCapa')) marcarAlvo('cover');
+});
+addEventListener('paste', (e) => {
+  if (!livro) return;
+  const item = [...(e.clipboardData?.items || [])].find((i) => i.kind === 'file' && i.type.startsWith('image/'));
+  if (!item) return; // texto normal: deixa colar no campo
+  e.preventDefault();
+  if (!alvoColar) return toast('Clique na página (ou na capa) e cole de novo');
+  enviarImagem(alvoColar, item.getAsFile());
+});
+
+// botão "Colar" (útil no celular): lê a imagem da área de transferência
+async function colarDoBotao(alvo, btn) {
+  marcarAlvo(alvo);
+  if (!navigator.clipboard?.read) return toast('Este navegador não deixa ler a área de transferência. Use Ctrl+V.');
+  try {
+    for (const item of await navigator.clipboard.read()) {
+      const tipo = item.types.find((t) => t.startsWith('image/'));
+      if (tipo) {
+        const blob = await item.getType(tipo);
+        return enviarImagem(alvo, new File([blob], 'colada', { type: tipo }), btn);
+      }
+    }
+    toast('Não há imagem copiada. Copie uma imagem e tente de novo.');
+  } catch {
+    toast('Permita o acesso à área de transferência (ou use Ctrl+V).');
+  }
+}
+
+// arrastar e soltar nas miniaturas
+addEventListener('dragover', (e) => {
+  const t = e.target.closest?.('[data-drop]');
+  e.preventDefault();
+  document.querySelectorAll('.thumb.alvo').forEach((x) => x !== t && x.classList.remove('alvo'));
+  if (t) t.classList.add('alvo');
+});
+addEventListener('drop', (e) => {
+  e.preventDefault();
+  document.querySelectorAll('.thumb.alvo').forEach((x) => x.classList.remove('alvo'));
+  const t = e.target.closest?.('[data-drop]');
+  if (t && livro) enviarImagem(t.dataset.drop, e.dataTransfer.files[0]);
+});
 
 function telaLogin(msg = '') {
   $('#app').innerHTML = `<div class="card" style="max-width:420px;margin:40px auto">
@@ -203,8 +291,8 @@ async function salvar(silencioso) {
 function paginaHtml(p, i) {
   return `<div class="pagina" data-id="${esc(p.id)}">
     <div>
-      <div class="thumb" style="${p.imageUrl ? `background-image:url('${p.imageUrl}')` : ''}">${p.imageUrl ? '' : 'sem imagem'}</div>
-      <div class="acoes"><button class="btn az" data-act="img">🎨 Gerar imagem</button></div>
+      <div class="thumb" data-drop="${esc(p.id)}" title="Arraste uma imagem aqui" style="${p.imageUrl ? `background-image:url('${p.imageUrl}')` : ''}">${p.imageUrl ? '' : 'sem imagem<br>arraste uma aqui'}</div>
+      <div class="acoes"><button class="btn az" data-act="img">🎨 Gerar imagem</button><button class="btn" data-act="upload">📤 Enviar</button><button class="btn" data-act="colar">📋 Colar</button></div>
       ${p.audioUrl ? `<audio controls preload="none" src="${p.audioUrl}"></audio>` : '<p class="status">sem áudio</p>'}
       <div class="acoes"><button class="btn az" data-act="audio">🔊 Gerar áudio</button></div>
     </div>
@@ -224,6 +312,7 @@ function paginaHtml(p, i) {
 
 async function telaLivro(id) {
   clearInterval(pollJob);
+  if (livro?.id !== id) alvoColar = null;
   livro = await api(`/api/books/${id}`);
   history.replaceState(null, '', `/admin?livro=${encodeURIComponent(id)}`);
   const sh = (await api('/api/shelves')).shelves;
@@ -246,13 +335,13 @@ async function telaLivro(id) {
       <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" name="locked" style="width:auto" ${livro.locked ? 'checked' : ''}> Trancado 🔒</label>
     </div>
   </div>
-  <div class="card">
+  <div class="card" id="cardCapa">
     <h2>Capa (página 1)</h2>
     <div class="capa-ed">
-      <div class="thumb" style="${livro.cover.url ? `background-image:url('${livro.cover.url}')` : ''}"></div>
+      <div class="thumb" data-drop="cover" title="Arraste uma imagem aqui" style="display:grid;place-items:center;color:#999;font-size:13px;text-align:center;${livro.cover.url ? `background-image:url('${livro.cover.url}')` : ''}">${livro.cover.url ? '' : 'sem capa<br>arraste uma aqui'}</div>
       <div><label>Cena da capa</label><textarea name="coverPrompt" rows="3" placeholder="Ex.: the wooden puppet smiling in a flower garden">${esc(livro.cover.prompt)}</textarea>
-        <div class="acoes"><button class="btn az" id="bCapa">🎨 Gerar capa</button>
-        <span class="dica">A capa é usada como referência para manter os personagens iguais nas páginas — gere ela primeiro.</span></div></div>
+        <div class="acoes"><button class="btn az" id="bCapa">🎨 Gerar capa</button><button class="btn" id="bCapaUp">📤 Enviar</button><button class="btn" id="bCapaCola">📋 Colar</button>
+        <span class="dica">Para colar: clique na capa ou numa página e aperte Ctrl+V. A capa é usada como referência para manter os personagens iguais nas páginas — gere ela primeiro.</span></div></div>
     </div>
   </div>
   <div class="card">
@@ -277,6 +366,9 @@ async function telaLivro(id) {
     if (!confirm(`Excluir "${livro.title}" com todas as imagens e áudios?`)) return;
     await api(`/api/books/${livro.id}`, { method: 'DELETE' }); telaLista();
   };
+  $('#bCapaUp').onclick = (e) => escolherArquivo('cover', e.target);
+  $('#bCapaCola').onclick = (e) => colarDoBotao('cover', e.target);
+  if (alvoColar) marcarAlvo(alvoColar);
   $('#bCapa').onclick = (e) => ocupado(e.target, async () => {
     await salvar(true);
     livro = await api(`/api/books/${livro.id}/cover`, { method: 'POST', body: {} });
@@ -289,6 +381,8 @@ async function telaLivro(id) {
   $('#paginas').onclick = async (e) => {
     const act = e.target.dataset.act; if (!act) return;
     const el = e.target.closest('.pagina'); const pid = el.dataset.id;
+    if (act === 'upload') return escolherArquivo(pid, e.target);
+    if (act === 'colar') return colarDoBotao(pid, e.target);
     if (act === 'img' || act === 'audio') {
       return ocupado(e.target, async () => {
         await salvar(true);

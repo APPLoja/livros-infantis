@@ -8,6 +8,7 @@ Estante de livros infantis com **ilustrações geradas pelo OpenRouter** e **nar
   - escreve a história com IA (OpenRouter) a partir de um tema ou cria o livro em branco;
   - edita o texto, a narração (com tags do v4, ex. `[sussurrando]`) e a cena de cada página;
   - gera a capa, a imagem e o áudio de cada página, ou tudo de uma vez com **⚡ Gerar tudo que falta**;
+  - também aceita imagens prontas: botão **📤 Enviar**, arrastar e soltar na miniatura, ou **colar** (clique na página ou na capa e aperte Ctrl+V; no celular, use o botão **📋 Colar**);
   - escolhe a voz entre as vozes da sua conta ElevenLabs;
   - organiza as prateleiras (nome, cor, ordem, tema "natal").
 
@@ -50,6 +51,7 @@ Todas as rotas de escrita exigem o header `x-admin-token`.
 | POST | `/api/story` | `{theme, pages, age, shelf, voiceId}` → livro escrito pela IA |
 | POST | `/api/books/:id/cover` | gerar a capa |
 | POST | `/api/books/:id/pages/:pageId/image` | gerar a ilustração de uma página |
+| PUT | `/api/books/:id/cover/upload` · `/api/books/:id/pages/:pageId/upload` | enviar uma imagem pronta (corpo = arquivo, `Content-Type: image/*`, até 25 MB) |
 | POST | `/api/books/:id/pages/:pageId/audio` | gerar a narração de uma página (com timestamps) |
 | POST | `/api/books/:id/generate-all` | `{force}` → fila em segundo plano; acompanhe em `GET /api/books/:id/job` |
 | GET | `/api/voices` | vozes da conta ElevenLabs |
