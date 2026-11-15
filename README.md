@@ -15,9 +15,10 @@ A capa serve de **referência visual** para as ilustrações das páginas, para 
 
 ## Rodar
 
-Requer Node 20 ou mais novo, sem dependências externas.
+Requer Node 20 ou mais novo. A única dependência é o `sharp`, que comprime as imagens para WebP.
 
 ```bash
+npm install
 cp .env.example .env   # preencha ADMIN_TOKEN, OPENROUTER_API_KEY e ELEVENLABS_API_KEY
 npm start              # http://127.0.0.1:8095
 ```
