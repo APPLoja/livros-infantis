@@ -71,6 +71,7 @@ function alinhar(exibidas, faladas) {
 
 function aplicarPrefs() {
   document.documentElement.style.setProperty('--fs', `${prefs.fs}px`);
+  if (livro) requestAnimationFrame(ajustarFonte);
   document.body.classList.toggle('noite', prefs.noite);
   $('#bNoite').classList.toggle('on', prefs.noite);
   $('#bTexto').classList.toggle('on', prefs.texto);
@@ -80,6 +81,19 @@ function aplicarPrefs() {
   $('#icoSom').innerHTML = prefs.som ? SOM_ON : SOM_OFF;
   audio.muted = !prefs.som;
 }
+
+// diminui a letra até o texto caber acima da ilustração (nunca aumenta além da escolha)
+function ajustarFonte() {
+  const t = $('#texto');
+  let fs = prefs.fs;
+  t.style.setProperty('--fs-fit', `${fs}px`);
+  while (fs > 16 && t.scrollHeight > t.clientHeight + 1) {
+    fs -= 2;
+    t.style.setProperty('--fs-fit', `${fs}px`);
+  }
+}
+addEventListener('resize', () => livro && ajustarFonte());
+document.fonts?.ready.then(() => livro && ajustarFonte());
 
 function render() {
   clearTimeout(timerAuto);
@@ -114,6 +128,7 @@ function render() {
     } else if (prefs.auto) agendarAuto(4000);
   }
   if (pagina === 0 && prefs.auto) agendarAuto(3000);
+  ajustarFonte();
   $('#prog').style.width = `${Math.min(100, (pagina / total()) * 100)}%`;
   $('#bAnt').disabled = pagina === 0;
   $('#bProx').disabled = ehFim();

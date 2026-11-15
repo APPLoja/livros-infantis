@@ -98,9 +98,10 @@ body.leitor.noite { background: #1b1d2b; --text: #e8d6c2; }
 .ferramentas svg { width: 32px; height: 32px; fill: currentColor; display: block; }
 
 .texto {
-  flex: 1 1 auto; display: grid; place-items: center; padding: 10px 28px; text-align: center; min-height: 0;
-  font-size: var(--fs, 34px); line-height: 1.75; overflow: auto;
+  flex: 1 1 auto; display: flex; flex-direction: column; padding: 10px 24px; text-align: center; min-height: 0;
+  font-size: var(--fs-fit, var(--fs, 34px)); line-height: 1.6; overflow: auto;
 }
+.texto > * { margin: auto 0; } /* centraliza sem cortar o topo quando o texto é grande */
 .texto.oculto p { visibility: hidden; }
 .texto p { margin: 0; word-spacing: .15em; }
 .texto .w { border-radius: 8px; padding: 0 2px; transition: background .12s, color .12s; }
