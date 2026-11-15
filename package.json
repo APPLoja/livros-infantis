@@ -1,0 +1,9 @@
+{
+  "name": "livros-infantis",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Estante de livros infantis com ilustrações (OpenRouter) e narração (ElevenLabs v4)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "dev": "node --watch server.js" },
+  "engines": { "node": ">=20" }
+}

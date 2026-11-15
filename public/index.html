@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#16244a">
+  <title>Livros Infantis</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="estante">
+  <header class="topo">
+    <div class="estrelas" id="estrelas"></div>
+    <h1>Hora da <span>História</span></h1>
+    <a class="pill" href="/admin" title="Editor">✏️</a>
+  </header>
+  <main id="estante"></main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// estrelinhas no céu do topo
+$('#estrelas').innerHTML = Array.from({ length: 10 }, () =>
+  `<i style="left:${Math.random() * 100}%;top:${Math.random() * 90}%;transform:rotate(${Math.random() * 40 - 20}deg)">★</i>`).join('');
+
+function progresso() {
+  try { return JSON.parse(localStorage.getItem('progresso') || '{}'); } catch { return {}; }
+}
+
+function livroHtml(b, prog) {
+  const p = prog[b.id];
+  const pct = p && b.pages ? Math.min(100, Math.round((p.page / (b.pages + 1)) * 100)) : 0;
+  return `<button class="livro" data-id="${esc(b.id)}" data-locked="${b.locked ? 1 : 0}" aria-label="${esc(b.title)}">
+    <div class="capa" style="${b.cover ? `background-image:url('${b.cover}')` : ''}"></div>
+    <div class="titulo">${esc(b.title)}</div>
+    ${b.locked ? '<div class="cadeado">🔒</div>' : ''}
+    ${!b.published ? '<div class="rascunho">rascunho</div>' : ''}
+    ${pct > 0 && pct < 100 ? `<div class="progresso"><b style="width:${pct}%"></b></div>` : ''}
+  </button>`;
+}
+
+function prateleira(nome, cor, livros, prog, tema = '') {
+  return `<section class="prateleira ${tema ? `tema-${esc(tema)}` : ''}" style="--cor:${esc(cor)}">
+    <div class="livros">${livros.map((b) => livroHtml(b, prog)).join('')}</div>
+    <div class="tabua"></div>
+    <div class="rotulo">${esc(nome)}</div>
+  </section>`;
+}
+
+async function carregar() {
+  const { shelves } = await fetch('/api/library').then((r) => r.json());
+  const prog = progresso();
+  const todos = shelves.flatMap((s) => s.books);
+  const lendo = Object.entries(prog)
+    .sort((a, b) => b[1].at - a[1].at)
+    .map(([id]) => todos.find((b) => b.id === id))
+    .filter((b) => b && !b.locked);
+
+  let html = '';
+  if (lendo.length) html += prateleira('Continuar lendo', '#5fb544', lendo, prog);
+  for (const s of shelves) html += prateleira(s.name, s.color, s.books, prog, s.theme);
+  $('#estante').innerHTML = html || '<p class="vazio">Nenhum livro publicado ainda.<br><a href="/admin">Criar o primeiro livro</a></p>';
+}
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.livro');
+  if (!b) return;
+  if (b.dataset.locked === '1') return alert('Este livro ainda está trancado 🔒');
+  location.href = `/ler?id=${encodeURIComponent(b.dataset.id)}`;
+});
+
+carregar();
+</script>
+</body>
+</html>

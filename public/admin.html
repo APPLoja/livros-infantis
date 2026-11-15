@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Editor — Livros Infantis</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body { background: #f4f1ec; color: #2d2a26; font-family: system-ui, sans-serif; }
+    header { background: var(--night); color: #fff; padding: 12px 20px; display: flex; gap: 12px; align-items: center; position: sticky; top: 0; z-index: 10; }
+    header h1 { font: 22px 'Lilita One'; margin: 0; flex: 1; }
+    header a { color: #ffd54a; }
+    main { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    .card { background: #fff; border-radius: 14px; padding: 18px; margin-bottom: 18px; box-shadow: 0 1px 3px #0001; }
+    h2 { margin: 0 0 12px; font-size: 18px; }
+    label { display: block; font-size: 13px; font-weight: 600; color: #6b645b; margin: 10px 0 4px; }
+    input, textarea, select { width: 100%; padding: 9px 10px; border: 1px solid #d8d2c8; border-radius: 8px; font: 15px system-ui; background: #fff; }
+    textarea { resize: vertical; min-height: 60px; }
+    .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+    .btn { border: 0; border-radius: 8px; padding: 9px 14px; background: #e9e4dc; color: #2d2a26; font-weight: 600; }
+    .btn.pri { background: var(--green); color: #fff; }
+    .btn.az { background: #3d8fd6; color: #fff; }
+    .btn.red { background: #e5486a; color: #fff; }
+    .btn:disabled { opacity: .5; cursor: wait; }
+    .acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+    .lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; }
+    .lista .livro { width: 100%; }
+    .pagina { display: grid; grid-template-columns: 260px 1fr; gap: 16px; border-top: 1px solid #eee; padding: 16px 0; }
+    .pagina .thumb { aspect-ratio: 4/3; background: #eee center/cover; border-radius: 10px; display: grid; place-items: center; color: #999; font-size: 13px; }
+    .pagina .num { font: 18px 'Lilita One'; color: var(--green); }
+    .capa-ed { display: grid; grid-template-columns: 200px 1fr; gap: 16px; }
+    .capa-ed .thumb { aspect-ratio: 3/4; background: #eee center/cover; border-radius: 10px; }
+    audio { width: 100%; height: 36px; margin-top: 8px; }
+    .status { font-size: 14px; color: #6b645b; }
+    .erro { color: #c62828; }
+    .ok { color: #2e7d32; }
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+    .chips span { background: #f0ebe3; padding: 2px 8px; border-radius: 99px; }
+    .dica { font-size: 12px; color: #8a8378; margin-top: 4px; }
+    @media (max-width: 700px) { .pagina, .capa-ed { grid-template-columns: 1fr; } }
+    #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #222; color: #fff; padding: 10px 16px; border-radius: 10px; display: none; z-index: 20; max-width: 90vw; }
+  </style>
+</head>
+<body>
+<header><h1>✏️ Editor de livros</h1><a href="/">Ver estante</a></header>
+<main id="app"></main>
+<div id="toast"></div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let token = localStorage.getItem('adminToken') || '';
+let cfg = {}, voices = [], shelves = [], livro = null, pollJob;
+
+function toast(msg, ms = 3500) {
+  const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = 'none'), ms);
+}
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'x-admin-token': token, ...(opts.headers || {}) },
+    body: opts.body && typeof opts.body !== 'string' ? JSON.stringify(opts.body) : opts.body,
+  });
+  const data = await r.json().catch(() => ({}));
+  if (r.status === 401) { localStorage.removeItem('adminToken'); token = ''; telaLogin(); }
+  if (!r.ok) throw new Error(data.error || `Erro ${r.status}`);
+  return data;
+}
+
+// botão que mostra "gerando…" enquanto espera
+async function ocupado(btn, fn) {
+  const txt = btn.textContent; btn.disabled = true; btn.textContent = 'gerando…';
+  try { return await fn(); } catch (e) { toast(e.message, 7000); } finally { btn.disabled = false; btn.textContent = txt; }
+}
+
+function telaLogin(msg = '') {
+  $('#app').innerHTML = `<div class="card" style="max-width:420px;margin:40px auto">
+    <h2>Entrar no editor</h2>
+    <label>Token de administrador (ADMIN_TOKEN do .env)</label>
+    <input id="tk" type="password" autocomplete="current-password">
+    <p class="erro">${esc(msg)}</p>
+    <div class="acoes"><button class="btn pri" id="entrar">Entrar</button></div></div>`;
+  $('#entrar').onclick = async () => {
+    token = $('#tk').value.trim();
+    const c = await fetch('/api/config', { headers: { 'x-admin-token': token } }).then((r) => r.json());
+    if (!c.admin) return telaLogin('Token inválido');
+    localStorage.setItem('adminToken', token);
+    iniciar();
+  };
+  $('#tk').onkeydown = (e) => e.key === 'Enter' && $('#entrar').click();
+}
+
+async function iniciar() {
+  cfg = await fetch('/api/config', { headers: { 'x-admin-token': token } }).then((r) => r.json());
+  if (!cfg.admin) return telaLogin();
+  api('/api/voices').then((d) => { voices = d.voices; if (livro) telaLivro(livro.id); }).catch(() => {});
+  const id = new URLSearchParams(location.search).get('livro');
+  id ? telaLivro(id) : telaLista();
+}
+
+function avisosChaves() {
+  const f = [];
+  if (!cfg.openrouter) f.push('OPENROUTER_API_KEY');
+  if (!cfg.elevenlabs) f.push('ELEVENLABS_API_KEY');
+  return f.length ? `<div class="card erro">Faltam chaves no .env: <b>${f.join(', ')}</b> — reinicie o servidor depois de preencher.</div>` : '';
+}
+
+function vozOptions(sel) {
+  const opts = voices.map((v) => `<option value="${esc(v.id)}" ${v.id === sel ? 'selected' : ''}>${esc(v.name)}${v.labels?.accent ? ` · ${esc(v.labels.accent)}` : ''}${v.labels?.gender ? ` · ${esc(v.labels.gender)}` : ''}</option>`);
+  if (sel && !voices.some((v) => v.id === sel)) opts.unshift(`<option value="${esc(sel)}" selected>${esc(sel)}</option>`);
+  return `<option value="">— escolha uma voz —</option>${opts.join('')}`;
+}
+
+async function telaLista() {
+  history.replaceState(null, '', '/admin');
+  livro = null;
+  const [{ shelves: lib }, sh] = await Promise.all([api('/api/library?all=1'), api('/api/shelves')]);
+  shelves = sh.shelves;
+  const shelfList = `<datalist id="dlShelves">${shelves.map((s) => `<option value="${esc(s.name)}">`).join('')}</datalist>`;
+  $('#app').innerHTML = `${avisosChaves()}${shelfList}
+  <div class="card">
+    <h2>✨ Criar história com IA</h2>
+    <label>Tema / ideia da história</label>
+    <textarea id="tema" placeholder="Ex.: uma tartaruguinha que tem medo do escuro e descobre os vaga-lumes">${''}</textarea>
+    <div class="row">
+      <div><label>Páginas</label><input id="nPag" type="number" min="4" max="30" value="12"></div>
+      <div><label>Idade</label><input id="idade" value="3 a 7 anos"></div>
+      <div><label>Prateleira</label><input id="prat" list="dlShelves" value="${esc(shelves[0]?.name || 'Contos Clássicos')}"></div>
+      <div><label>Voz</label><select id="voz">${vozOptions(cfg.defaultVoice)}</select></div>
+    </div>
+    <div class="acoes">
+      <button class="btn pri" id="bIA">Escrever história</button>
+      <button class="btn" id="bVazio">Criar livro em branco</button>
+      <span class="dica">O texto é escrito por ${esc(cfg.textModel)} (OpenRouter). Depois você revisa e gera imagens e áudios.</span>
+    </div>
+  </div>
+  <div class="card"><h2>📚 Livros</h2>${lib.map((s) => `
+    <h3 style="color:${esc(s.color)};font-family:'Lilita One';font-weight:400">${esc(s.name)}</h3>
+    <div class="lista">${s.books.map((b) => `<button class="livro" data-id="${esc(b.id)}">
+      <div class="capa" style="${b.cover ? `background-image:url('${b.cover}')` : ''}"></div>
+      <div class="titulo" style="font-size:16px">${esc(b.title)}</div>
+      ${!b.published ? '<div class="rascunho">rascunho</div>' : ''}${b.locked ? '<div class="cadeado">🔒</div>' : ''}</button>`).join('') || '<span class="status">vazia</span>'}</div>`).join('') || '<p class="status">Nenhum livro ainda.</p>'}
+  </div>
+  <div class="card"><h2>🗄️ Prateleiras</h2><div id="prats"></div>
+    <div class="acoes"><button class="btn" id="addPrat">+ prateleira</button><button class="btn pri" id="salvarPrats">Salvar prateleiras</button></div>
+    <p class="dica">A ordem aqui é a ordem na estante. Tema "natal" usa o fundo azul de inverno.</p></div>`;
+
+  const desenharPrats = () => {
+    $('#prats').innerHTML = shelves.map((s, i) => `<div class="row" data-i="${i}" style="margin-bottom:6px;align-items:end">
+      <div><label>Nome</label><input data-k="name" value="${esc(s.name)}"></div>
+      <div><label>Cor</label><input data-k="color" type="color" value="${esc(s.color)}"></div>
+      <div><label>Tema</label><input data-k="theme" value="${esc(s.theme)}" placeholder="(opcional) natal"></div>
+      <div class="acoes" style="margin:0"><button class="btn" data-up="${i}">↑</button><button class="btn red" data-del="${i}">✕</button></div></div>`).join('');
+  };
+  desenharPrats();
+  $('#prats').oninput = (e) => { const r = e.target.closest('[data-i]'); shelves[r.dataset.i][e.target.dataset.k] = e.target.value; };
+  $('#prats').onclick = (e) => {
+    const up = e.target.dataset.up, del = e.target.dataset.del;
+    if (up > 0) { [shelves[up - 1], shelves[up]] = [shelves[up], shelves[up - 1]]; desenharPrats(); }
+    if (del !== undefined) { shelves.splice(del, 1); desenharPrats(); }
+  };
+  $('#addPrat').onclick = () => { shelves.push({ name: 'Nova prateleira', color: '#3d8fd6', theme: '' }); desenharPrats(); };
+  $('#salvarPrats').onclick = async () => { shelves = (await api('/api/shelves', { method: 'PUT', body: { shelves } })).shelves; toast('Prateleiras salvas'); };
+
+  $('#app').querySelectorAll('.lista .livro').forEach((b) => (b.onclick = () => telaLivro(b.dataset.id)));
+  $('#bVazio').onclick = async () => {
+    const b = await api('/api/books', { method: 'POST', body: { title: 'Novo livro', shelf: $('#prat').value, voiceId: $('#voz').value, pages: [{ text: '' }] } });
+    telaLivro(b.id);
+  };
+  $('#bIA').onclick = (e) => ocupado(e.target, async () => {
+    if (!$('#tema').value.trim()) throw new Error('Escreva o tema da história');
+    const b = await api('/api/story', { method: 'POST', body: { theme: $('#tema').value, pages: $('#nPag').value, age: $('#idade').value, shelf: $('#prat').value, voiceId: $('#voz').value } });
+    toast('História criada! Revise o texto e gere as imagens e áudios.');
+    telaLivro(b.id);
+  });
+}
+
+function coletar() {
+  const f = $('#form');
+  const g = (k) => $(`[name=${k}]`, f);
+  return {
+    title: g('title').value, shelf: g('shelf').value, voiceId: g('voiceId').value,
+    style: g('style').value, characters: g('characters').value,
+    published: g('published').checked, locked: g('locked').checked,
+    cover: { prompt: g('coverPrompt').value },
+    pages: [...f.querySelectorAll('.pagina')].map((el) => ({
+      id: el.dataset.id,
+      text: $('[data-k=text]', el).value,
+      narration: $('[data-k=narration]', el).value,
+      imagePrompt: $('[data-k=imagePrompt]', el).value,
+    })),
+  };
+}
+
+async function salvar(silencioso) {
+  livro = await api(`/api/books/${livro.id}`, { method: 'PUT', body: coletar() });
+  if (!silencioso) toast('Salvo ✔');
+  return livro;
+}
+
+function paginaHtml(p, i) {
+  return `<div class="pagina" data-id="${esc(p.id)}">
+    <div>
+      <div class="thumb" style="${p.imageUrl ? `background-image:url('${p.imageUrl}')` : ''}">${p.imageUrl ? '' : 'sem imagem'}</div>
+      <div class="acoes"><button class="btn az" data-act="img">🎨 Gerar imagem</button></div>
+      ${p.audioUrl ? `<audio controls preload="none" src="${p.audioUrl}"></audio>` : '<p class="status">sem áudio</p>'}
+      <div class="acoes"><button class="btn az" data-act="audio">🔊 Gerar áudio</button></div>
+    </div>
+    <div>
+      <div class="acoes" style="margin:0"><span class="num">Página ${i + 2}</span><span style="flex:1"></span>
+        <button class="btn" data-act="up" title="Subir">↑</button><button class="btn" data-act="down" title="Descer">↓</button>
+        <button class="btn" data-act="add" title="Inserir página depois">+ página</button><button class="btn red" data-act="del">✕</button></div>
+      <label>Texto (o que aparece na tela)</label>
+      <textarea data-k="text" rows="3">${esc(p.text)}</textarea>
+      <label>Narração (opcional — com tags do ElevenLabs v4)</label>
+      <textarea data-k="narration" rows="2" placeholder="Deixe vazio para narrar o texto. Ex.: [sussurrando] Era uma vez...">${esc(p.narration)}</textarea>
+      <label>Cena da ilustração</label>
+      <textarea data-k="imagePrompt" rows="2" placeholder="Descreva a cena (de preferência em inglês)">${esc(p.imagePrompt)}</textarea>
+      ${p.audioUrl && p.words?.length ? `<p class="dica">${p.words.length} palavras sincronizadas · ${p.words.at(-1).end.toFixed(1)}s</p>` : ''}
+    </div></div>`;
+}
+
+async function telaLivro(id) {
+  clearInterval(pollJob);
+  livro = await api(`/api/books/${id}`);
+  history.replaceState(null, '', `/admin?livro=${encodeURIComponent(id)}`);
+  const sh = (await api('/api/shelves')).shelves;
+  $('#app').innerHTML = `${avisosChaves()}
+  <div class="acoes" style="margin:0 0 14px"><button class="btn" id="voltar">← Livros</button>
+    <a class="btn" href="/ler?id=${encodeURIComponent(livro.id)}&p=0" target="_blank">▶ Abrir no leitor</a></div>
+  <form id="form" onsubmit="return false">
+  <div class="card">
+    <div class="row">
+      <div><label>Título</label><input name="title" value="${esc(livro.title)}"></div>
+      <div><label>Prateleira</label><input name="shelf" list="dl" value="${esc(livro.shelf)}"><datalist id="dl">${sh.map((s) => `<option value="${esc(s.name)}">`).join('')}</datalist></div>
+      <div><label>Voz da narração (${esc(cfg.ttsModel)})</label><select name="voiceId">${vozOptions(livro.voiceId)}</select></div>
+    </div>
+    <div class="row">
+      <div><label>Estilo das ilustrações</label><textarea name="style" rows="2">${esc(livro.style)}</textarea></div>
+      <div><label>Personagens (descrição fixa, ajuda a manter a aparência)</label><textarea name="characters" rows="2">${esc(livro.characters)}</textarea></div>
+    </div>
+    <div class="acoes">
+      <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" name="published" style="width:auto" ${livro.published ? 'checked' : ''}> Publicado na estante</label>
+      <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" name="locked" style="width:auto" ${livro.locked ? 'checked' : ''}> Trancado 🔒</label>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Capa (página 1)</h2>
+    <div class="capa-ed">
+      <div class="thumb" style="${livro.cover.url ? `background-image:url('${livro.cover.url}')` : ''}"></div>
+      <div><label>Cena da capa</label><textarea name="coverPrompt" rows="3" placeholder="Ex.: the wooden puppet smiling in a flower garden">${esc(livro.cover.prompt)}</textarea>
+        <div class="acoes"><button class="btn az" id="bCapa">🎨 Gerar capa</button>
+        <span class="dica">A capa é usada como referência para manter os personagens iguais nas páginas — gere ela primeiro.</span></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Páginas (${livro.pages.length})</h2>
+    <div id="paginas">${livro.pages.map(paginaHtml).join('')}</div>
+    <div class="acoes"><button class="btn" id="addFim">+ página no fim</button></div>
+  </div>
+  </form>
+  <div class="card" style="position:sticky;bottom:10px">
+    <div class="acoes" style="margin:0">
+      <button class="btn pri" id="bSalvar">💾 Salvar</button>
+      <button class="btn az" id="bTudo">⚡ Gerar tudo que falta</button>
+      <label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400"><input type="checkbox" id="forcar" style="width:auto"> refazer tudo</label>
+      <span class="status" id="job"></span><span style="flex:1"></span>
+      <button class="btn red" id="bExcluir">Excluir livro</button>
+    </div>
+  </div>`;
+
+  $('#voltar').onclick = () => telaLista();
+  $('#bSalvar').onclick = () => salvar().catch((e) => toast(e.message));
+  $('#bExcluir').onclick = async () => {
+    if (!confirm(`Excluir "${livro.title}" com todas as imagens e áudios?`)) return;
+    await api(`/api/books/${livro.id}`, { method: 'DELETE' }); telaLista();
+  };
+  $('#bCapa').onclick = (e) => ocupado(e.target, async () => {
+    await salvar(true);
+    livro = await api(`/api/books/${livro.id}/cover`, { method: 'POST', body: {} });
+    telaLivro(livro.id);
+  });
+  $('#addFim').onclick = async () => {
+    const body = coletar(); body.pages.push({ id: Math.random().toString(16).slice(2, 10), text: '' });
+    livro = await api(`/api/books/${livro.id}`, { method: 'PUT', body }); telaLivro(livro.id);
+  };
+  $('#paginas').onclick = async (e) => {
+    const act = e.target.dataset.act; if (!act) return;
+    const el = e.target.closest('.pagina'); const pid = el.dataset.id;
+    if (act === 'img' || act === 'audio') {
+      return ocupado(e.target, async () => {
+        await salvar(true);
+        livro = await api(`/api/books/${livro.id}/pages/${pid}/${act === 'img' ? 'image' : 'audio'}`, { method: 'POST', body: {} });
+        const i = livro.pages.findIndex((p) => p.id === pid);
+        el.outerHTML = paginaHtml(livro.pages[i], i);
+      });
+    }
+    const body = coletar(); const i = body.pages.findIndex((p) => p.id === pid);
+    if (act === 'del') { if (!confirm('Excluir esta página?')) return; body.pages.splice(i, 1); }
+    if (act === 'up' && i > 0) [body.pages[i - 1], body.pages[i]] = [body.pages[i], body.pages[i - 1]];
+    if (act === 'down' && i < body.pages.length - 1) [body.pages[i + 1], body.pages[i]] = [body.pages[i], body.pages[i + 1]];
+    if (act === 'add') body.pages.splice(i + 1, 0, { id: Math.random().toString(16).slice(2, 10), text: '' });
+    livro = await api(`/api/books/${livro.id}`, { method: 'PUT', body }); telaLivro(livro.id);
+  };
+  $('#bTudo').onclick = async () => {
+    await salvar(true);
+    const forcar = $('#forcar').checked;
+    if (forcar && !confirm('Refazer TODAS as imagens e áudios? Isso consome créditos do OpenRouter e da ElevenLabs.')) return;
+    const j = await api(`/api/books/${livro.id}/generate-all`, { method: 'POST', body: { force: forcar } });
+    if (!j.total) return toast('Nada faltando 🎉');
+    acompanhar();
+  };
+  const j = await api(`/api/books/${livro.id}/job`);
+  if (j.status === 'running') acompanhar();
+}
+
+function acompanhar() {
+  clearInterval(pollJob);
+  const tick = async () => {
+    const j = await api(`/api/books/${livro.id}/job`);
+    $('#job').innerHTML = j.status === 'running'
+      ? `gerando ${j.done}/${j.total}…`
+      : `<span class="${j.errors?.length ? 'erro' : 'ok'}">concluído ${j.done}/${j.total}${j.errors?.length ? ` · ${j.errors.length} erro(s): ${esc(j.errors[0].error)}` : ''}</span>`;
+    if (j.status !== 'running') { clearInterval(pollJob); const msg = $('#job').innerHTML; await telaLivro(livro.id); $('#job').innerHTML = msg; }
+  };
+  pollJob = setInterval(tick, 3000); tick();
+}
+
+token ? iniciar() : telaLogin();
+</script>
+</body>
+</html>
