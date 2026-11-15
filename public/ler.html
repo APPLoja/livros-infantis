@@ -95,6 +95,22 @@ function ajustarFonte() {
 addEventListener('resize', () => livro && ajustarFonte());
 document.fonts?.ready.then(() => livro && ajustarFonte());
 
+// movimentos de câmera (Ken Burns). Escala >= 1.12 para nunca mostrar a borda.
+const MOVIMENTOS = [
+  ['scale(1.02)', 'scale(1.16)'],                                         // aproxima
+  ['scale(1.16) translate(-4%, 0)', 'scale(1.16) translate(4%, 0)'],      // passeia p/ direita
+  ['scale(1.18) translate(3%, 2%)', 'scale(1.04)'],                        // afasta
+  ['scale(1.16) translate(0, 4%)', 'scale(1.16) translate(0, -3%)'],      // sobe
+  ['scale(1.16) translate(4%, 0)', 'scale(1.16) translate(-4%, 0)'],      // passeia p/ esquerda
+  ['scale(1.04) translate(0, 0)', 'scale(1.18) translate(-3%, 3%)'],      // aproxima no canto
+];
+function imgMovendo(url, n, segundos) {
+  if (!url) return '';
+  const [de, para] = MOVIMENTOS[n % MOVIMENTOS.length];
+  const dur = Math.max(9, Math.min(30, (segundos || 8) + 3));
+  return `<img src="${url}" alt="" style="--kb-from:${de};--kb-to:${para};--kb-dur:${dur}s">`;
+}
+
 function render() {
   clearTimeout(timerAuto);
   audio.pause();
@@ -105,13 +121,13 @@ function render() {
   if (ehFim()) {
     t.innerHTML = `<div class="fim"><h2>Fim!</h2><p>Gostou da história?</p>
       <button id="bDeNovo">Ler de novo</button><button id="bEstante">Voltar à estante</button></div>`;
-    il.innerHTML = livro.cover.url ? `<img src="${livro.cover.url}" alt="">` : '';
+    il.innerHTML = imgMovendo(livro.cover.url, 2, 12);
     $('#bDeNovo').onclick = () => irPara(0);
     $('#bEstante').onclick = () => (location.href = '/');
     $('#contador').textContent = `${total()}/${total()}`;
   } else if (pagina === 0) {
     t.innerHTML = `<div><h2>${esc(livro.title)}</h2></div>`;
-    il.innerHTML = livro.cover.url ? `<img src="${livro.cover.url}" alt="">` : '';
+    il.innerHTML = imgMovendo(livro.cover.url, 0, 12);
     $('#contador').textContent = `1/${total()}`;
   } else {
     const p = livro.pages[pagina - 1];
@@ -119,7 +135,7 @@ function render() {
     t.innerHTML = `<p>${exibidas.map((w, i) => `<span class="w" data-i="${i}">${esc(w)}</span>`).join(' ')}</p>`;
     palavras = [...t.querySelectorAll('.w')];
     mapa = alinhar(exibidas, p.words || []);
-    il.innerHTML = p.imageUrl ? `<img src="${p.imageUrl}" alt="">` : '';
+    il.innerHTML = imgMovendo(p.imageUrl, pagina, p.words?.at(-1)?.end);
     $('#contador').textContent = `${pagina + 1}/${total()}`;
     if (p.audioUrl) {
       audio.src = p.audioUrl;

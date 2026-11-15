@@ -3,7 +3,7 @@
 Estante de livros infantis com **ilustrações geradas pelo OpenRouter** e **narração gerada pela ElevenLabs (modelo `eleven_v4`)**, com destaque de cada palavra enquanto ela é lida.
 
 - **Estante** (`/`): prateleiras coloridas, "Continuar lendo", livros trancados 🔒 e rascunhos.
-- **Leitor** (`/ler?id=…`): texto em cima e ilustração embaixo, barra verde com fechar, voltar, `n/N`, avançar e som. Também tem tamanho de letra, mostrar ou esconder o texto, modo noite, virar página sozinho e música de fundo opcional (`public/musica.mp3`). Dá para deslizar o dedo e tocar numa palavra para ouvir a partir dela.
+- **Leitor** (`/ler?id=…`): texto em cima e ilustração embaixo (com movimento lento de câmera, efeito "Ken Burns", diferente em cada página), barra verde com fechar, voltar, `n/N`, avançar e som. Também tem tamanho de letra, mostrar ou esconder o texto, modo noite, virar página sozinho e música de fundo opcional (`public/musica.mp3`). Dá para deslizar o dedo e tocar numa palavra para ouvir a partir dela.
 - **Editor** (`/admin`):
   - escreve a história com IA (OpenRouter) a partir de um tema ou cria o livro em branco;
   - edita o texto, a narração (com tags do v4, ex. `[sussurrando]`) e a cena de cada página;
