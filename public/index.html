@@ -5,14 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#16244a">
   <title>Livros Infantis</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icone.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Hora da História">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/styles.css">
+  <script src="/offline.js"></script>
 </head>
 <body class="estante">
   <header class="topo">
     <div class="estrelas" id="estrelas"></div>
     <h1>Hora da <span>História</span></h1>
+    <button class="pill" id="bInstalar" title="Instalar como app" hidden>📲 Instalar</button>
+    <button class="pill" id="bBaixados" title="Livros para ler sem internet">⬇️</button>
     <a class="pill" href="/admin" title="Editor">✏️</a>
   </header>
+  <div class="aviso-rede">Sem internet: os livros baixados ✓ continuam funcionando.</div>
   <main id="estante"></main>
 
 <script>
@@ -30,10 +41,12 @@ function progresso() {
 function livroHtml(b, prog) {
   const p = prog[b.id];
   const pct = p && b.pages ? Math.min(100, Math.round((p.page / (b.pages + 1)) * 100)) : 0;
-  return `<button class="livro" data-id="${esc(b.id)}" data-locked="${b.locked ? 1 : 0}" aria-label="${esc(b.title)}">
+  const off = !!Offline.baixados()[b.id];
+  return `<button class="livro ${off ? 'tem-offline' : ''}" data-id="${esc(b.id)}" data-locked="${b.locked ? 1 : 0}" aria-label="${esc(b.title)}">
     <div class="capa" style="${b.cover ? `background-image:url('${b.cover}')` : ''}"></div>
     <div class="titulo">${esc(b.title)}</div>
     ${b.locked ? '<div class="cadeado">🔒</div>' : ''}
+    ${off ? '<div class="offline" title="Baixado: funciona sem internet">✓</div>' : ''}
     ${!b.published ? '<div class="rascunho">rascunho</div>' : ''}
     ${pct > 0 && pct < 100 ? `<div class="progresso"><b style="width:${pct}%"></b></div>` : ''}
   </button>`;
@@ -47,8 +60,12 @@ function prateleira(nome, cor, livros, prog, tema = '') {
   </section>`;
 }
 
+let ultimaEstante = [];
 async function carregar() {
-  const { shelves } = await fetch('/api/library').then((r) => r.json());
+  let shelves;
+  let falhou = false;
+  try { ({ shelves } = await fetch('/api/library').then((r) => r.json())); } catch { shelves = []; falhou = true; }
+  ultimaEstante = shelves;
   const prog = progresso();
   const todos = shelves.flatMap((s) => s.books);
   const lendo = Object.entries(prog)
@@ -59,6 +76,7 @@ async function carregar() {
   let html = '';
   if (lendo.length) html += prateleira('Continuar lendo', '#5fb544', lendo, prog);
   for (const s of shelves) html += prateleira(s.name, s.color, s.books, prog, s.theme);
+  if (!html && falhou) { $('#estante').innerHTML = '<p class="vazio">Sem internet 😴<br>Conecte para ver os livros.</p>'; return; }
   $('#estante').innerHTML = html || '<p class="vazio">Nenhum livro publicado ainda.<br><a href="/admin">Criar o primeiro livro</a></p>';
 }
 
@@ -66,8 +84,69 @@ document.addEventListener('click', (e) => {
   const b = e.target.closest('.livro');
   if (!b) return;
   if (b.dataset.locked === '1') return alert('Este livro ainda está trancado 🔒');
+  if (!navigator.onLine && !Offline.baixados()[b.dataset.id]) return alert('Sem internet. Este livro não foi baixado ⬇️');
   location.href = `/ler?id=${encodeURIComponent(b.dataset.id)}`;
 });
+
+// ---- instalar / baixar ----
+const rede = () => document.body.classList.toggle('sem-rede', !navigator.onLine);
+addEventListener('online', () => { rede(); carregar(); });
+addEventListener('offline', rede);
+rede();
+
+const bInst = $('#bInstalar');
+const mostrarInstalar = () => { bInst.hidden = !Offline.podeInstalar(); };
+Offline.aoMudarInstalacao(mostrarInstalar);
+mostrarInstalar();
+bInst.addEventListener('click', () => Offline.instalar());
+
+function painelBaixados() {
+  const livros = ultimaEstante.flatMap((s) => s.books).filter((b) => !b.locked);
+  const unicos = [...new Map(livros.map((b) => [b.id, b])).values()];
+  const p = document.createElement('div');
+  p.className = 'painel';
+  const desenhar = () => {
+    const baix = Offline.baixados();
+    const total = Object.values(baix).reduce((a, x) => a + (x.bytes || 0), 0);
+    p.innerHTML = `<div>
+      <h2>Ler sem internet</h2>
+      <p>Baixe os livros para ler no avião, na estrada ou onde não tiver sinal.${total ? ` Ocupando ${Offline.tamanho(total)}.` : ''}</p>
+      ${unicos.map((b) => `<div class="item" data-id="${esc(b.id)}">
+        <span>${esc(b.title)}<br><small>${baix[b.id] ? `✓ baixado · ${Offline.tamanho(baix[b.id].bytes)}` : 'não baixado'}</small></span>
+        ${baix[b.id] ? '<button class="sec" data-acao="remover">Remover</button>' : '<button data-acao="baixar">Baixar</button>'}
+      </div>`).join('') || '<p>Nenhum livro disponível.</p>'}
+      <div class="acoes">
+        ${unicos.some((b) => !baix[b.id]) ? '<button data-acao="todos">Baixar todos</button>' : ''}
+        <button class="sec" data-acao="fechar">Fechar</button>
+      </div></div>`;
+  };
+  const baixarUm = async (id, btn) => {
+    btn.disabled = true;
+    try { await Offline.baixar(id, (f, t) => { btn.textContent = `${Math.round((f / Math.max(t, 1)) * 100)}%`; }); }
+    catch (e) { alert(e.message); }
+  };
+  p.addEventListener('click', async (e) => {
+    if (e.target === p) { p.remove(); return carregar(); }
+    const btn = e.target.closest('button[data-acao]');
+    if (!btn) return;
+    const id = btn.closest('.item')?.dataset.id;
+    const acao = btn.dataset.acao;
+    if (acao === 'fechar') { p.remove(); return carregar(); }
+    if (!navigator.onLine && acao !== 'remover') return alert('Precisa de internet para baixar.');
+    if (acao === 'baixar') await baixarUm(id, btn);
+    if (acao === 'remover') await Offline.remover(id);
+    if (acao === 'todos') {
+      for (const b of unicos.filter((x) => !Offline.baixados()[x.id])) {
+        const bt = p.querySelector(`.item[data-id="${CSS.escape(b.id)}"] button`);
+        if (bt) await baixarUm(b.id, bt);
+      }
+    }
+    desenhar();
+  });
+  desenhar();
+  document.body.append(p);
+}
+$('#bBaixados').addEventListener('click', painelBaixados);
 
 carregar();
 </script>

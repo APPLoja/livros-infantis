@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="ceu" cx="30%" cy="25%" r="90%"><stop offset="0" stop-color="#2c4383"/><stop offset="1" stop-color="#16244a"/></radialGradient>
+    <linearGradient id="madeira" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cf914f"/><stop offset="1" stop-color="#8a5326"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#ceu)"/>
+  <g fill="#ffd54a">
+    <path d="M256 70l17 35 38 5-28 26 7 38-34-18-34 18 7-38-28-26 38-5z"/>
+    <path d="M120 120l7 14 15 2-11 10 3 15-14-7-14 7 3-15-11-10 15-2z" opacity=".8"/>
+    <path d="M392 130l7 14 15 2-11 10 3 15-14-7-14 7 3-15-11-10 15-2z" opacity=".8"/>
+  </g>
+  <rect x="70" y="392" width="372" height="34" rx="8" fill="url(#madeira)"/>
+  <path d="M256 228c-40-26-96-34-150-28v190c54-6 110 2 150 28z" fill="#fff"/>
+  <path d="M256 228c40-26 96-34 150-28v190c-54-6-110 2-150 28z" fill="#f3ecdf"/>
+  <path d="M256 228v190" stroke="#d9cbb3" stroke-width="6"/>
+  <g stroke="#7fcf98" stroke-width="10" stroke-linecap="round">
+    <path d="M136 250c30-2 60 2 90 14M136 290c30-2 60 2 90 14M136 330c30-2 60 2 90 14"/>
+  </g>
+  <g stroke="#4caf50" stroke-width="10" stroke-linecap="round">
+    <path d="M286 264c30-12 60-16 90-14M286 304c30-12 60-16 90-14M286 344c30-12 60-16 90-14"/>
+  </g>
+</svg>

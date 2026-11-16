@@ -142,3 +142,29 @@ body.leitor.noite { background: #1b1d2b; --text: #e8d6c2; }
   .ilustracao { grid-column: 2; grid-row: 2; max-height: none; aspect-ratio: auto; margin: 0 20px 20px 0; border-radius: 16px; }
   .barra-prog, .controles { grid-column: 1 / -1; }
 }
+
+/* ------------------------- App / offline ------------------------- */
+.livro .offline { position: absolute; z-index: 2; right: 14px; bottom: 20px; background: #2e9a46; color: #fff; font-size: 13px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; box-shadow: 0 2px 4px #0006; }
+body.sem-rede .livro:not(.tem-offline) { opacity: .45; filter: grayscale(.6); }
+.aviso-rede { display: none; background: #ffd54a; color: #5a3a10; text-align: center; padding: 8px 12px; font-weight: 700; }
+body.sem-rede .aviso-rede { display: block; }
+.painel { position: fixed; inset: 0; z-index: 20; background: #0008; display: grid; place-items: center; padding: 20px; }
+.painel > div { background: #fffdfb; color: #6b4a33; border-radius: 20px; padding: 22px; width: min(440px, 100%); max-height: 85dvh; overflow: auto; box-shadow: 0 10px 30px #0006; }
+.painel h2 { margin: 0 0 6px; font: 26px 'Lilita One', sans-serif; color: var(--green); }
+.painel .item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eee2d4; }
+.painel .item span { flex: 1; }
+.painel .item small { color: #a08a76; }
+.painel button { background: var(--green); color: #fff; border: 0; border-radius: 999px; padding: 8px 16px; font: 16px 'Lilita One'; }
+.painel button.sec { background: #e9dccb; color: #6b4a33; }
+.painel .acoes { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; flex-wrap: wrap; }
+.dica-ios { position: fixed; inset: 0; z-index: 30; background: #0009; display: flex; align-items: flex-end; justify-content: center; padding: 20px; }
+.dica-ios > div { background: #fff; color: #333; border-radius: 18px; padding: 20px; max-width: 380px; font-size: 18px; }
+.dica-ios button { background: var(--green); color: #fff; border: 0; border-radius: 999px; padding: 10px 22px; font: 18px 'Lilita One'; }
+.ferramentas .baixar.ok { color: var(--green); }
+.ferramentas .baixar small { font-size: 11px; display: block; text-align: center; }
+.toast { position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%); z-index: 40; background: #333d; color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 16px; pointer-events: none; }
+@media (max-width: 440px) {
+  .topo { gap: 8px; }
+  .topo h1 { font-size: 22px; }
+  .topo .pill { padding: 8px 11px; font-size: 14px; }
+}

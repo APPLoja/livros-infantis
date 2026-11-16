@@ -13,7 +13,7 @@ const PUBLIC = path.join(__dirname, 'public');
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
-  '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json',
+  '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.webm': 'audio/webm', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json',
 };
 
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
@@ -65,13 +65,30 @@ function requireAdmin(req) {
   if (!isAdmin(req)) throw new HttpError(401, 'Token de administrador inválido');
 }
 
+async function readAudio(req) {
+  const type = req.headers['content-type'] || '';
+  if (!/^audio\//.test(type)) throw new HttpError(415, 'Envie um arquivo de áudio');
+  const chunks = [];
+  let size = 0;
+  for await (const c of req) {
+    size += c.length;
+    if (size > 25_000_000) throw new HttpError(413, 'Áudio muito grande (máximo 25 MB)');
+    chunks.push(c);
+  }
+  if (!size) throw new HttpError(400, 'Áudio vazio');
+  return { buffer: Buffer.concat(chunks), type };
+}
+
 const mediaUrl = (id, name) => (name ? `/media/${id}/${encodeURIComponent(name)}` : null);
 
 function publicBook(b) {
   return {
     ...b,
     cover: { ...b.cover, url: mediaUrl(b.id, b.cover.image) },
-    pages: b.pages.map((p) => ({ ...p, imageUrl: mediaUrl(b.id, p.image), audioUrl: mediaUrl(b.id, p.audio) })),
+    music: { ...b.music, url: mediaUrl(b.id, b.music.file) },
+    pages: b.pages.map((p) => ({
+      ...p, imageUrl: mediaUrl(b.id, p.image), audioUrl: mediaUrl(b.id, p.audio), ambienceUrl: mediaUrl(b.id, p.ambience),
+    })),
   };
 }
 
@@ -179,6 +196,44 @@ route('POST', '/api/books/:id/pages/:pageId/audio', async (req, q, { id, pageId 
   return publicBook(await gen.generatePageAudio(id, pageId));
 });
 
+route('POST', '/api/books/:id/sounds/suggest', async (req, q, { id }) => {
+  requireAdmin(req);
+  const { overwrite } = await readJson(req);
+  return publicBook(await gen.suggestSounds(id, { overwrite: !!overwrite }));
+});
+
+route('POST', '/api/books/:id/music', async (req, q, { id }) => {
+  requireAdmin(req);
+  return publicBook(await gen.generateMusic(id, await readJson(req)));
+});
+
+route('PUT', '/api/books/:id/music/upload', async (req, q, { id }) => {
+  requireAdmin(req);
+  const a = await readAudio(req);
+  return publicBook(await gen.uploadSound(id, 'music', a.buffer, a.type));
+});
+
+route('DELETE', '/api/books/:id/music', async (req, q, { id }) => {
+  requireAdmin(req);
+  return publicBook(await gen.clearSound(id, 'music'));
+});
+
+route('POST', '/api/books/:id/pages/:pageId/ambience', async (req, q, { id, pageId }) => {
+  requireAdmin(req);
+  return publicBook(await gen.generatePageAmbience(id, pageId, await readJson(req)));
+});
+
+route('PUT', '/api/books/:id/pages/:pageId/ambience/upload', async (req, q, { id, pageId }) => {
+  requireAdmin(req);
+  const a = await readAudio(req);
+  return publicBook(await gen.uploadSound(id, pageId, a.buffer, a.type));
+});
+
+route('DELETE', '/api/books/:id/pages/:pageId/ambience', async (req, q, { id, pageId }) => {
+  requireAdmin(req);
+  return publicBook(await gen.clearSound(id, pageId));
+});
+
 route('POST', '/api/books/:id/generate-all', async (req, q, { id }) => {
   requireAdmin(req);
   return gen.startGenerateAll(id, await readJson(req));
@@ -196,8 +251,8 @@ route('POST', '/api/story', async (req) => {
   const story = await openrouter.generateStory({ theme, pages: Math.min(Math.max(Number(pages) || 12, 4), 30), age });
   const book = store.createBook({
     title: story.title, characters: story.characters, style: story.style || undefined,
-    shelf, voiceId, coverPrompt: story.coverPrompt,
-    pages: story.pages.map((p) => ({ text: p.text, imagePrompt: p.imagePrompt })),
+    shelf, voiceId, coverPrompt: story.coverPrompt, musicPrompt: story.musicPrompt,
+    pages: story.pages.map((p) => ({ text: p.text, imagePrompt: p.imagePrompt, ambiencePrompt: p.ambiencePrompt })),
   });
   return publicBook(book);
 });

@@ -49,6 +49,7 @@
 <main id="app"></main>
 <div id="toast"></div>
 <input type="file" id="arquivo" accept="image/*" hidden>
+<input type="file" id="arqAudio" accept="audio/*" hidden>
 
 <script>
 const $ = (s, el = document) => el.querySelector(s);
@@ -273,11 +274,13 @@ function coletar() {
     style: g('style').value, characters: g('characters').value,
     published: g('published').checked, locked: g('locked').checked,
     cover: { prompt: g('coverPrompt').value },
+    music: { prompt: g('musicPrompt').value },
     pages: [...f.querySelectorAll('.pagina')].map((el) => ({
       id: el.dataset.id,
       text: $('[data-k=text]', el).value,
       narration: $('[data-k=narration]', el).value,
       imagePrompt: $('[data-k=imagePrompt]', el).value,
+      ambiencePrompt: $('[data-k=ambiencePrompt]', el).value,
     })),
   };
 }
@@ -295,6 +298,8 @@ function paginaHtml(p, i) {
       <div class="acoes"><button class="btn az" data-act="img">🎨 Gerar imagem</button><button class="btn" data-act="upload">📤 Enviar</button><button class="btn" data-act="colar">📋 Colar</button></div>
       ${p.audioUrl ? `<audio controls preload="none" src="${p.audioUrl}"></audio>` : '<p class="status">sem áudio</p>'}
       <div class="acoes"><button class="btn az" data-act="audio">🔊 Gerar áudio</button></div>
+      ${p.ambienceUrl ? `<audio controls loop preload="none" src="${p.ambienceUrl}"></audio>` : '<p class="status">sem som de fundo</p>'}
+      <div class="acoes"><button class="btn az" data-act="som">🌿 Gerar som</button><button class="btn" data-act="somUp" title="Enviar áudio">📤</button>${p.ambienceUrl ? '<button class="btn" data-act="somDel" title="Tirar o som de fundo">✕</button>' : ''}</div>
     </div>
     <div>
       <div class="acoes" style="margin:0"><span class="num">Página ${i + 2}</span><span style="flex:1"></span>
@@ -306,6 +311,8 @@ function paginaHtml(p, i) {
       <textarea data-k="narration" rows="2" placeholder="Deixe vazio para narrar o texto. Ex.: [sussurrando] Era uma vez...">${esc(p.narration)}</textarea>
       <label>Cena da ilustração</label>
       <textarea data-k="imagePrompt" rows="2" placeholder="Descreva a cena (de preferência em inglês)">${esc(p.imagePrompt)}</textarea>
+      <label>Som de fundo (em inglês, sem fala e sem música)</label>
+      <textarea data-k="ambiencePrompt" rows="1" placeholder="Ex.: soft crickets and a gentle night breeze. Páginas com o mesmo texto usam o mesmo som.">${esc(p.ambiencePrompt)}</textarea>
       ${p.audioUrl && p.words?.length ? `<p class="dica">${p.words.length} palavras sincronizadas · ${p.words.at(-1).end.toFixed(1)}s</p>` : ''}
     </div></div>`;
 }
@@ -344,6 +351,18 @@ async function telaLivro(id) {
         <span class="dica">Para colar: clique na capa ou numa página e aperte Ctrl+V. A capa é usada como referência para manter os personagens iguais nas páginas — gere ela primeiro.</span></div></div>
     </div>
   </div>
+  <div class="card" id="cardSom">
+    <h2>🎵 Trilha sonora e sons de fundo</h2>
+    <label>Trilha sonora do livro (instrumental, toca baixinho por baixo da narração)</label>
+    <textarea name="musicPrompt" rows="2" placeholder="Ex.: gentle lullaby with music box and soft strings, slow and calm">${esc(livro.music?.prompt)}</textarea>
+    ${livro.music?.url ? `<audio controls preload="none" src="${livro.music.url}"></audio>` : '<p class="status">sem trilha</p>'}
+    <div class="acoes">
+      <button class="btn az" id="bTrilha">🎵 Gerar trilha</button><button class="btn" id="bTrilhaUp">📤 Enviar MP3</button>
+      ${livro.music?.url ? '<button class="btn" id="bTrilhaDel">✕ Remover</button>' : ''}
+      <button class="btn" id="bSugerir">✨ Sugerir trilha e sons com IA</button>
+      <span class="dica">Trilha e sons são gerados pela ElevenLabs (música de 60 s e ambientes de 20 s em loop). Cada página tem seu som de fundo no campo "Som de fundo".</span>
+    </div>
+  </div>
   <div class="card">
     <h2>Páginas (${livro.pages.length})</h2>
     <div id="paginas">${livro.pages.map(paginaHtml).join('')}</div>
@@ -354,6 +373,7 @@ async function telaLivro(id) {
     <div class="acoes" style="margin:0">
       <button class="btn pri" id="bSalvar">💾 Salvar</button>
       <button class="btn az" id="bTudo">⚡ Gerar tudo que falta</button>
+      <label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400"><input type="checkbox" id="comSons" style="width:auto" checked> trilha e sons</label>
       <label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400"><input type="checkbox" id="forcar" style="width:auto"> refazer tudo</label>
       <span class="status" id="job"></span><span style="flex:1"></span>
       <button class="btn red" id="bExcluir">Excluir livro</button>
@@ -382,6 +402,14 @@ async function telaLivro(id) {
     const act = e.target.dataset.act; if (!act) return;
     const el = e.target.closest('.pagina'); const pid = el.dataset.id;
     if (act === 'upload') return escolherArquivo(pid, e.target);
+    if (act === 'somUp') return escolherAudio(pid, e.target);
+    if (act === 'som' || act === 'somDel') {
+      return ocupado(e.target, async () => {
+        await salvar(true);
+        livro = await api(`/api/books/${livro.id}/pages/${pid}/ambience`, { method: act === 'som' ? 'POST' : 'DELETE', body: act === 'som' ? {} : undefined });
+        redesenharPaginas();
+      });
+    }
     if (act === 'colar') return colarDoBotao(pid, e.target);
     if (act === 'img' || act === 'audio') {
       return ocupado(e.target, async () => {
@@ -401,13 +429,53 @@ async function telaLivro(id) {
   $('#bTudo').onclick = async () => {
     await salvar(true);
     const forcar = $('#forcar').checked;
-    if (forcar && !confirm('Refazer TODAS as imagens e áudios? Isso consome créditos do OpenRouter e da ElevenLabs.')) return;
-    const j = await api(`/api/books/${livro.id}/generate-all`, { method: 'POST', body: { force: forcar } });
+    const sons = $('#comSons').checked;
+    if (forcar && !confirm(`Refazer TODAS as imagens e áudios${sons ? ', a trilha e os sons de fundo' : ''}? Isso consome créditos do OpenRouter e da ElevenLabs.`)) return;
+    const j = await api(`/api/books/${livro.id}/generate-all`, { method: 'POST', body: { force: forcar, sounds: sons } });
     if (!j.total) return toast('Nada faltando 🎉');
     acompanhar();
   };
+  $('#bTrilhaUp').onclick = (e) => escolherAudio('music', e.target);
+  if ($('#bTrilhaDel')) $('#bTrilhaDel').onclick = (e) => ocupado(e.target, async () => {
+    await salvar(true); livro = await api(`/api/books/${livro.id}/music`, { method: 'DELETE' }); telaLivro(livro.id);
+  });
+  $('#bTrilha').onclick = (e) => ocupado(e.target, async () => {
+    await salvar(true);
+    livro = await api(`/api/books/${livro.id}/music`, { method: 'POST', body: {} });
+    telaLivro(livro.id); toast('Trilha pronta 🎵');
+  });
+  $('#bSugerir').onclick = (e) => ocupado(e.target, async () => {
+    await salvar(true);
+    const temAlgo = livro.music?.prompt || livro.pages.some((p) => p.ambiencePrompt);
+    const sobrescrever = temAlgo && confirm('Substituir as descrições de som que já existem? (Cancelar = só preencher as vazias)');
+    livro = await api(`/api/books/${livro.id}/sounds/suggest`, { method: 'POST', body: { overwrite: sobrescrever } });
+    telaLivro(livro.id); toast('Descrições de som preenchidas. Revise e gere (ou use "Gerar tudo que falta").', 6000);
+  });
   const j = await api(`/api/books/${livro.id}/job`);
   if (j.status === 'running') acompanhar();
+}
+
+// várias páginas podem compartilhar o mesmo som: redesenha todas
+function redesenharPaginas() {
+  const sel = alvoColar;
+  $('#paginas').innerHTML = livro.pages.map(paginaHtml).join('');
+  if (sel) marcarAlvo(sel);
+}
+
+function escolherAudio(alvo, btn) {
+  const inp = $('#arqAudio');
+  inp.value = '';
+  inp.onchange = () => ocupado(btn, async () => {
+    const file = inp.files[0];
+    if (!file) return;
+    if (file.size > 25e6) throw new Error('Áudio muito grande (máximo 25 MB)');
+    await salvar(true);
+    const url = alvo === 'music' ? `/api/books/${livro.id}/music/upload` : `/api/books/${livro.id}/pages/${alvo}/ambience/upload`;
+    livro = await api(url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'audio/mpeg' } });
+    if (alvo === 'music') telaLivro(livro.id); else redesenharPaginas();
+    toast('Áudio enviado ✔');
+  });
+  inp.click();
 }
 
 function acompanhar() {
