@@ -232,7 +232,7 @@ function destravarAudio() {
     if (AC) {
       try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
       ctx = new AC();
-      const ligar = (el) => { const g = ctx.createGain(); g.gain.value = 0; ctx.createMediaElementSource(el).connect(g).connect(ctx.destination); return g; };
+      const ligar = (el) => { el.volume = 1; const g = ctx.createGain(); g.gain.value = 0; ctx.createMediaElementSource(el).connect(g).connect(ctx.destination); return g; };
       ganhoMusica = ligar(musica);
       ganhoAmbiente = ligar(ambiente);
     }
@@ -246,12 +246,34 @@ function destravarAudio() {
   if (prefs.musica && musica.getAttribute('src') && musica.paused) musica.play().catch(() => {});
   if (prefs.ambiente && ambiente.getAttribute('src') && ambiente.paused) ambiente.play().catch(() => {});
 }
-document.addEventListener('pointerdown', () => destravarAudio());
+// qualquer interação libera o áudio: clique, toque (no Android o toque só conta no touchend) e teclado
+for (const t of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  document.addEventListener(t, () => destravarAudio(), { capture: true, passive: true });
+}
+// Os sons de fundo da ElevenLabs vêm com volumes muito diferentes (alguns quase mudos):
+// mede cada arquivo uma vez e calcula um fator para deixá-los num volume parecido, sem distorcer.
+const fatorSom = new Map();
+async function medirSom(url) {
+  if (!url || !ctx || fatorSom.has(url)) return;
+  fatorSom.set(url, 1);
+  try {
+    const buf = await ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
+    let soma = 0, pico = 0, n = 0;
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < d.length; i += 4) { soma += d[i] * d[i]; pico = Math.max(pico, Math.abs(d[i])); n++; }
+    }
+    const rms = Math.sqrt(soma / Math.max(n, 1));
+    if (rms > 0) fatorSom.set(url, Math.max(0.5, Math.min(0.07 / rms, 0.9 / (pico * 0.6 || 1), 10)));
+  } catch { /* fica 1 */ }
+}
 function aplicarVolume(el, ganho, v) {
   if (ganho) ganho.gain.value = v; else el.volume = Math.min(1, v);
 }
 function mixer() {
   if (!livro) return;
+  // se o áudio ficou suspenso (ex.: virou a página sozinho), retoma assim que o navegador permitir
+  if (ctx && ctx.state !== 'running' && navigator.userActivation?.hasBeenActive && !document.hidden) ctx.resume().catch(() => {});
   const narrando = !audio.paused && !audio.muted;
   // trilha: fade nas pontas para o loop não dar "pulo"
   let alvoM = 0;
@@ -273,7 +295,8 @@ function mixer() {
   vol.musica += (alvoM - vol.musica) * 0.2;
   vol.ambiente += (alvoA - vol.ambiente) * 0.2;
   aplicarVolume(musica, ganhoMusica, vol.musica);
-  aplicarVolume(ambiente, ganhoAmbiente, vol.ambiente);
+  medirSom(ambienteDesejado);
+  aplicarVolume(ambiente, ganhoAmbiente, vol.ambiente * (fatorSom.get(atual) || 1));
   if (prefs.musica && musica.src && musica.paused && ctx?.state === 'running' && !document.hidden) musica.play().catch(() => {});
   if (prefs.ambiente && ambiente.src && ambiente.paused && ctx?.state === 'running' && !document.hidden) ambiente.play().catch(() => {});
   if (!prefs.musica && vol.musica < 0.01 && !musica.paused) musica.pause();
