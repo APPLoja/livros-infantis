@@ -18,7 +18,7 @@ A capa serve de **referência visual** para as ilustrações das páginas, para 
 
 ## Rodar
 
-Requer Node 20 ou mais novo. A única dependência é o `sharp`, que comprime as imagens para WebP.
+Requer Node 20 ou mais novo. Dependências: `sharp` (comprime as imagens para WebP) e `ffmpeg-static` (deixa todas as narrações no mesmo volume, cerca de −19 LUFS, porque cada voz da ElevenLabs sai com um volume diferente).
 
 ```bash
 npm install
