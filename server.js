@@ -259,7 +259,18 @@ route('POST', '/api/story', async (req) => {
 
 route('GET', '/api/voices', async (req) => {
   requireAdmin(req);
-  return { voices: await eleven.listVoices() };
+  const salvas = store.getVoices().map((v) => ({ ...v, labels: {}, saved: true }));
+  let conta = [];
+  try { conta = await eleven.listVoices(); } catch { /* chave sem permissão voices_read: usa só as salvas */ }
+  const ids = new Set(salvas.map((v) => v.id));
+  return { voices: [...salvas, ...conta.filter((v) => !ids.has(v.id))] };
+});
+
+route('PUT', '/api/voices', async (req) => {
+  requireAdmin(req);
+  const { voices } = await readJson(req);
+  if (!Array.isArray(voices)) throw new HttpError(400, 'Envie {voices: [{id, name}]}');
+  return { voices: store.saveVoices(voices) };
 });
 
 route('GET', '/api/shelves', () => ({ shelves: store.getShelves() }));

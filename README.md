@@ -11,7 +11,7 @@ Estante de livros infantis com **ilustrações geradas pelo OpenRouter** e **nar
   - gera a capa, a imagem e o áudio de cada página, ou tudo de uma vez com **⚡ Gerar tudo que falta**;
   - também aceita imagens prontas: botão **📤 Enviar**, arrastar e soltar na miniatura, ou **colar** (clique na página ou na capa e aperte Ctrl+V; no celular, use o botão **📋 Colar**);
   - trilha sonora do livro e som de fundo de cada página, gerados pela ElevenLabs (música e efeitos sonoros), sugeridos pela IA a partir do texto (**✨ Sugerir trilha e sons**) ou enviados em MP3. Páginas com o mesmo texto de som compartilham o mesmo arquivo, então o som continua sem corte;
-  - escolhe a voz entre as vozes da sua conta ElevenLabs;
+  - escolhe a voz entre as vozes da sua conta ElevenLabs ou cadastra uma voz pelo ID (**＋ nova voz**), útil quando a chave não tem permissão para listar vozes;
   - organiza as prateleiras (nome, cor, ordem, tema "natal").
 
 A capa serve de **referência visual** para as ilustrações das páginas, para manter os personagens iguais. Por isso, gere a capa primeiro (o "gerar tudo" já faz nessa ordem).
@@ -60,5 +60,5 @@ Todas as rotas de escrita exigem o header `x-admin-token`.
 | POST/DELETE | `/api/books/:id/pages/:pageId/ambience` | gerar (efeito sonoro em loop, 20 s) ou remover o som de fundo |
 | PUT | `/api/books/:id/music/upload` · `/api/books/:id/pages/:pageId/ambience/upload` | enviar um áudio pronto (`Content-Type: audio/*`) |
 | POST | `/api/books/:id/generate-all` | `{force, images, audio, cover, sounds}` → fila em segundo plano; acompanhe em `GET /api/books/:id/job` |
-| GET | `/api/voices` | vozes da conta ElevenLabs |
+| GET/PUT | `/api/voices` | vozes: as cadastradas pelo ID em `data/voices.json` (`PUT {voices:[{id,name}]}`) + as da conta ElevenLabs, se a chave puder listá-las |
 | GET/PUT | `/api/shelves` | prateleiras |

@@ -184,7 +184,7 @@ function telaLogin(msg = '') {
 async function iniciar() {
   cfg = await fetch('/api/config', { headers: { 'x-admin-token': token } }).then((r) => r.json());
   if (!cfg.admin) return telaLogin();
-  api('/api/voices').then((d) => { voices = d.voices; if (livro) telaLivro(livro.id); }).catch(() => {});
+  carregarVozes();
   const id = new URLSearchParams(location.search).get('livro');
   id ? telaLivro(id) : telaLista();
 }
@@ -195,6 +195,27 @@ function avisosChaves() {
   if (!cfg.elevenlabs) f.push('ELEVENLABS_API_KEY');
   return f.length ? `<div class="card erro">Faltam chaves no .env: <b>${f.join(', ')}</b> — reinicie o servidor depois de preencher.</div>` : '';
 }
+
+function carregarVozes() {
+  return api('/api/voices').then((d) => { voices = d.voices; redesenharVozes(); }).catch(() => {});
+}
+function redesenharVozes() {
+  for (const el of document.querySelectorAll('select[name="voiceId"], #voz')) el.innerHTML = vozOptions(el.value || (el.id === 'voz' ? cfg.defaultVoice : livro?.voiceId));
+}
+// cadastra uma voz pelo ID da ElevenLabs (a chave pode não ter permissão de listar as vozes da conta)
+async function novaVoz(select) {
+  const id = (prompt('ID da voz na ElevenLabs (ex.: 4kfo1rulS1h4NGNqi7Ew):') || '').trim();
+  if (!id) return;
+  const name = (prompt('Nome para mostrar no editor:', 'Nova voz') || '').trim() || id;
+  const salvas = voices.filter((v) => v.saved).map(({ id, name }) => ({ id, name }));
+  await api('/api/voices', { method: 'PUT', body: { voices: [...salvas.filter((v) => v.id !== id), { id, name }] } });
+  await carregarVozes();
+  if (select) select.value = id;
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-nova-voz]');
+  if (b) { e.preventDefault(); novaVoz(b.parentElement.querySelector('select')).catch((err) => alert(err.message)); }
+});
 
 function vozOptions(sel) {
   const opts = voices.map((v) => `<option value="${esc(v.id)}" ${v.id === sel ? 'selected' : ''}>${esc(v.name)}${v.labels?.accent ? ` · ${esc(v.labels.accent)}` : ''}${v.labels?.gender ? ` · ${esc(v.labels.gender)}` : ''}</option>`);
@@ -217,7 +238,7 @@ async function telaLista() {
       <div><label>Páginas</label><input id="nPag" type="number" min="4" max="30" value="12"></div>
       <div><label>Idade</label><input id="idade" value="3 a 7 anos"></div>
       <div><label>Prateleira</label><input id="prat" list="dlShelves" value="${esc(shelves[0]?.name || 'Contos Clássicos')}"></div>
-      <div><label>Voz</label><select id="voz">${vozOptions(cfg.defaultVoice)}</select></div>
+      <div><label>Voz <a href="#" data-nova-voz title="Cadastrar uma voz pelo ID">＋ nova voz</a></label><select id="voz">${vozOptions(cfg.defaultVoice)}</select></div>
     </div>
     <div class="acoes">
       <button class="btn pri" id="bIA">Escrever história</button>
@@ -331,7 +352,7 @@ async function telaLivro(id) {
     <div class="row">
       <div><label>Título</label><input name="title" value="${esc(livro.title)}"></div>
       <div><label>Prateleira</label><input name="shelf" list="dl" value="${esc(livro.shelf)}"><datalist id="dl">${sh.map((s) => `<option value="${esc(s.name)}">`).join('')}</datalist></div>
-      <div><label>Voz da narração (${esc(cfg.ttsModel)})</label><select name="voiceId">${vozOptions(livro.voiceId)}</select></div>
+      <div><label>Voz da narração (${esc(cfg.ttsModel)}) <a href="#" data-nova-voz title="Cadastrar uma voz pelo ID">＋ nova voz</a></label><select name="voiceId">${vozOptions(livro.voiceId)}</select></div>
     </div>
     <div class="row">
       <div><label>Estilo das ilustrações</label><textarea name="style" rows="2">${esc(livro.style)}</textarea></div>
